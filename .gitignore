@@ -1,0 +1,7 @@
+build
+mx.scratch
+!.settings
+MDK-ARM/416/
+MDK-ARM/.vscode/
+MDK-ARM/*.uvguix.*
+MDK-ARM/*.lst
