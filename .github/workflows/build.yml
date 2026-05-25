@@ -37,3 +37,12 @@ jobs:
         if: always()
         run: |
           find build -type f \( -name '*.elf' -o -name '*.hex' -o -name '*.bin' -o -name '*.map' \) -print | sort
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: stm32-firmware
+          path: |
+            build/*.elf
+            build/*.hex
+            build/*.bin
