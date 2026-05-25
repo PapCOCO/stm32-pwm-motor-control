@@ -1,0 +1,43 @@
+{
+  "configurations": [
+    {
+      "name": "STM32F1",
+      "includePath": [
+        "${workspaceFolder}",
+        "${workspaceFolder}/Core/Src",
+        "${workspaceFolder}/Core/Inc",
+        "${workspaceFolder}/Drivers/STM32F1xx_HAL_Driver/Inc",
+        "${workspaceFolder}/Drivers/STM32F1xx_HAL_Driver/Inc/Legacy",
+        "${workspaceFolder}/Drivers/CMSIS/Device/ST/STM32F1xx/Include",
+        "${workspaceFolder}/Drivers/CMSIS/Include",
+        "/Users/pap/Library/xPacks/@xpack-dev-tools/arm-none-eabi-gcc/15.2.1-1.1.1/.content/lib/gcc/arm-none-eabi/15.2.1/include",
+        "/Users/pap/Library/xPacks/@xpack-dev-tools/arm-none-eabi-gcc/15.2.1-1.1.1/.content/lib/gcc/arm-none-eabi/15.2.1/include-fixed",
+        "/Users/pap/Library/xPacks/@xpack-dev-tools/arm-none-eabi-gcc/15.2.1-1.1.1/.content/arm-none-eabi/include"
+      ],
+      "defines": [
+        "STM32F103x6",
+        "USE_HAL_DRIVER"
+      ],
+      "compilerPath": "/Users/pap/Library/xPacks/@xpack-dev-tools/arm-none-eabi-gcc/15.2.1-1.1.1/.content/bin/arm-none-eabi-gcc",
+      "cStandard": "c11",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "gcc-arm",
+      "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+      "browse": {
+        "path": [
+          "${workspaceFolder}",
+          "${workspaceFolder}/Core/Src",
+          "${workspaceFolder}/Core/Inc",
+          "${workspaceFolder}/Drivers/STM32F1xx_HAL_Driver/Inc",
+          "${workspaceFolder}/Drivers/STM32F1xx_HAL_Driver/Inc/Legacy",
+          "${workspaceFolder}/Drivers/CMSIS/Device/ST/STM32F1xx/Include",
+          "${workspaceFolder}/Drivers/CMSIS/Include",
+          "/Users/pap/Library/xPacks/@xpack-dev-tools/arm-none-eabi-gcc/15.2.1-1.1.1/.content/lib/gcc/arm-none-eabi/15.2.1/include",
+          "/Users/pap/Library/xPacks/@xpack-dev-tools/arm-none-eabi-gcc/15.2.1-1.1.1/.content/lib/gcc/arm-none-eabi/15.2.1/include-fixed",
+          "/Users/pap/Library/xPacks/@xpack-dev-tools/arm-none-eabi-gcc/15.2.1-1.1.1/.content/arm-none-eabi/include"
+        ]
+      }
+    }
+  ],
+  "version": 4
+}
