@@ -1,16 +1,28 @@
 #include "app.h"
 
 #include "app_config.h"
+#include "main.h"
 #include "motor.h"
 #include "uart_debug.h"
 
+#include "FreeRTOS.h"
 #include "stm32f1xx_hal.h"
+#include "task.h"
 
 /*
- * 应用层调度模块
+ * 应用层调度模块（FreeRTOS）
  * - app_init() 负责初始化各个子模块
- * - app_run() 负责按配置周期调度子模块任务
+ * - app_start_scheduler() 负责创建任务并启动调度器
  */
+
+#define APP_MOTOR_TASK_PRIORITY (tskIDLE_PRIORITY + 2U)
+#define APP_UART_DEBUG_TASK_PRIORITY (tskIDLE_PRIORITY + 1U)
+
+#define APP_MOTOR_TASK_STACK_WORDS 192U
+#define APP_UART_DEBUG_TASK_STACK_WORDS 256U
+
+static void MotorTask(void *argument);
+static void UartDebugTask(void *argument);
 
 void app_init(void)
 {
@@ -21,24 +33,66 @@ void app_init(void)
 
 void app_run(void)
 {
-  /* 保存上次调度时间，避免阻塞式延时 */
-  static uint32_t last_motor_ms;
-  static uint32_t last_uart_ms;
-  uint32_t now_ms;
+  /* 兼容旧接口：业务调度已迁移到 FreeRTOS 任务。 */
+}
 
-  now_ms = HAL_GetTick();
+void app_start_scheduler(void)
+{
+  BaseType_t created;
 
-  /* 每 20ms 调度一次电机任务 */
-  if ((now_ms - last_motor_ms) >= APP_MOTOR_TASK_PERIOD_MS)
+  created = xTaskCreate(MotorTask,
+                        "MotorTask",
+                        APP_MOTOR_TASK_STACK_WORDS,
+                        NULL,
+                        APP_MOTOR_TASK_PRIORITY,
+                        NULL);
+  if (created != pdPASS)
   {
-    last_motor_ms = now_ms;
-    motor_task_step(now_ms);
+    Error_Handler();
   }
 
-  /* 每 1 秒调度一次串口调试任务 */
-  if ((now_ms - last_uart_ms) >= APP_UART_DEBUG_PERIOD_MS)
+  created = xTaskCreate(UartDebugTask,
+                        "UartDebugTask",
+                        APP_UART_DEBUG_TASK_STACK_WORDS,
+                        NULL,
+                        APP_UART_DEBUG_TASK_PRIORITY,
+                        NULL);
+  if (created != pdPASS)
   {
-    last_uart_ms = now_ms;
-    uart_debug_task_step(now_ms);
+    Error_Handler();
+  }
+
+  vTaskStartScheduler();
+
+  Error_Handler();
+}
+
+static void MotorTask(void *argument)
+{
+  TickType_t last_wake_tick;
+  const TickType_t period_ticks = pdMS_TO_TICKS(APP_MOTOR_TASK_PERIOD_MS);
+
+  (void)argument;
+  last_wake_tick = xTaskGetTickCount();
+
+  for (;;)
+  {
+    motor_task_step(HAL_GetTick());
+    vTaskDelayUntil(&last_wake_tick, period_ticks);
+  }
+}
+
+static void UartDebugTask(void *argument)
+{
+  TickType_t last_wake_tick;
+  const TickType_t period_ticks = pdMS_TO_TICKS(APP_UART_DEBUG_PERIOD_MS);
+
+  (void)argument;
+  last_wake_tick = xTaskGetTickCount();
+
+  for (;;)
+  {
+    uart_debug_task_step(HAL_GetTick());
+    vTaskDelayUntil(&last_wake_tick, period_ticks);
   }
 }

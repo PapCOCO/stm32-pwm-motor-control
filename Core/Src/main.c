@@ -12,7 +12,7 @@
  * - 初始化 HAL 库
  * - 配置系统时钟
  * - 初始化 GPIO、ADC、定时器、USART
- * - 调用应用层初始化和循环调度
+ * - 调用应用层初始化并启动 FreeRTOS 调度器
  */
 
 void SystemClock_Config(void);
@@ -33,11 +33,10 @@ int main(void)
   /* 初始化应用逻辑 */
   app_init();
 
-  /* 主循环：周期性调度应用任务 */
-  while (1)
-  {
-    app_run();
-  }
+  /* 启动 FreeRTOS 调度器，业务逻辑由任务执行 */
+  app_start_scheduler();
+
+  Error_Handler();
 }
 
 void SystemClock_Config(void)
