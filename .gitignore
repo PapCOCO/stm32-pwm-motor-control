@@ -9,16 +9,49 @@ CMakeCache.txt
 cmake_install.cmake
 compile_commands.json
 
-# Generated firmware artifacts
+# Generated firmware and build artifacts
+*.d
+*.o
+*.ko
+*.obj
 *.elf
 *.hex
 *.bin
 *.map
-*.lst
-*.d
-*.o
-*.obj
+*.ilk
+*.exp
 *.su
+*.idb
+*.pdb
+*.dwo
+*.mod*
+*.cmd
+.tmp_versions/
+modules.order
+Module.symvers
+Mkfile.old
+dkms.conf
+
+# Precompiled headers
+*.gch
+*.pch
+
+# Libraries and shared objects
+*.lib
+*.a
+*.la
+*.lo
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
 
 # Keil generated/user-local files
 !.settings/
