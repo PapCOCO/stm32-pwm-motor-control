@@ -1,0 +1,46 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ISP: download HEX via COM9",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/stm32_isp_download.ps1",
+        "-HexPath",
+        "${workspaceFolder}/build/Release/416.hex",
+        "-PortName",
+        "COM9",
+        "-BaudRate",
+        "115200"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "ISP: download HEX via COM9 manual reset",
+      "type": "process",
+      "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/stm32_isp_download.ps1",
+        "-HexPath",
+        "${workspaceFolder}/build/Release/416.hex",
+        "-PortName",
+        "COM9",
+        "-BaudRate",
+        "115200",
+        "-NoAutoBoot"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}

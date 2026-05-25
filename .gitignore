@@ -1,7 +1,38 @@
-build
-mx.scratch
-!.settings
+# Local handoff notes
+chat/
+
+# STM32CubeMX/CMake build output
+build/
+mx.scratch/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+
+# Generated firmware artifacts
+*.elf
+*.hex
+*.bin
+*.map
+*.lst
+*.d
+*.o
+*.obj
+*.su
+
+# Keil generated/user-local files
+!.settings/
 MDK-ARM/416/
 MDK-ARM/.vscode/
 MDK-ARM/*.uvguix.*
 MDK-ARM/*.lst
+MDK-ARM/*.bak
+MDK-ARM/*.dep
+MDK-ARM/*.crf
+MDK-ARM/*.htm
+MDK-ARM/*.lnp
+MDK-ARM/*.sct
+
+# Editor/OS noise
+.DS_Store
+Thumbs.db

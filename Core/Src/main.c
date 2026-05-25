@@ -26,61 +26,22 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "oled.h"
+#include "app_config.h"
+#include "app_uart.h"
+#include "command.h"
+#include "motor_control.h"
+#include "status_ui.h"
 #include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-typedef enum
-{
-  MOTOR_STOP = 0,
-  MOTOR_FORWARD,
-  MOTOR_REVERSE
-} MotorState_t;
 
-typedef enum
-{
-  CONTROL_KEYS = 0,
-  CONTROL_FORCE_FORWARD,
-  CONTROL_FORCE_REVERSE,
-  CONTROL_FORCE_STOP,
-  CONTROL_TEST_FORWARD_100,
-  CONTROL_TEST_REVERSE_100
-} ControlMode_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define LED_RUN_PIN GPIO_PIN_8
-#define LED_ALARM_PIN GPIO_PIN_7
-#define LED_APP_PIN GPIO_PIN_6
-#define LED_GPIO_PORT GPIOA
-#define LED_ON GPIO_PIN_RESET
-#define LED_OFF GPIO_PIN_SET
 
-#define KEY_RUN_PIN GPIO_PIN_12
-#define KEY_DIR_PIN GPIO_PIN_13
-#define KEY_GPIO_PORT GPIOB
-#define KEY_PRESSED GPIO_PIN_RESET
-
-#define ADC_MAX_VALUE 4095U
-#define VREF_MV 3300U
-#define PWM_MAX_DUTY 100U
-#define MOTOR_MIN_START_DUTY 40U
-#define MOTOR_REVERSE_DELAY_MS 50U
-#define REPORT_PERIOD_DEFAULT_MS 1000U
-#define REPORT_PERIOD_MIN_MS 300U
-#define REPORT_PERIOD_MAX_MS 2000U
-#define CONTROL_PERIOD_MS 20U
-#define OLED_UPDATE_PERIOD_MS 100U
-#define ADC_FILTER_SHIFT 2U
-#define ALARM_BLINK_HALF_PERIOD_MS 50U
-
-#define ACK_TARGET_USART1 0x01U
-#define ACK_TARGET_USART2 0x02U
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -91,406 +52,94 @@ typedef enum
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+/* 串口中断每次只收 1 个字节，收到后再交给命令解析器逐字节处理。 */
 static volatile uint8_t UsbRxByte;
 static volatile uint8_t BluetoothRxByte;
-static volatile uint8_t CommandMode;
-static volatile uint32_t CommandValue;
-static volatile uint32_t ReportPeriodMs = REPORT_PERIOD_DEFAULT_MS;
-static volatile uint8_t CommandAckPending;
-static volatile uint8_t CommandAckTarget;
-static volatile uint8_t CommandAckKind;
-static volatile uint32_t CommandAckValue;
-static volatile uint8_t AppLedOn;
-static volatile ControlMode_t ControlMode = CONTROL_KEYS;
-
-static uint16_t AdcRaw;
-static uint32_t AdcFiltered;
-static uint8_t AdcFilterReady;
-static uint16_t PotVoltageMv;
-static uint8_t PwmDuty;
-static MotorState_t MotorState = MOTOR_STOP;
-static char OledLineCache[4][17];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-static uint32_t ClampReportPeriod(uint32_t Value);
-static void ParseCommandByte(uint8_t Data, uint8_t AckTarget);
-static void ProcessControl(void);
-static void ProcessIndicators(uint32_t NowMs);
-static void ProcessStatusOutput(uint32_t NowMs);
-static void ProcessCommandAck(void);
-static void Motor_Set(MotorState_t State, uint8_t Duty);
-static void LED_Set(uint16_t Pin, uint8_t On);
-static void OLED_ShowPadded(uint8_t Line, const char *Text);
-static const char *MotorStateText(MotorState_t State);
+static void App_StartPeripherals(void);
+static void App_RestartUartReceive(UART_HandleTypeDef *Huart);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/* 把 printf 的输出重定向到 USART1，方便接电脑串口调试。 */
 int fputc(int ch, FILE *f)
 {
-  HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 0xFFFF);
+  uint8_t Byte;
+
+  (void)f;
+  Byte = (uint8_t)ch;
+  AppUart_SendByte(&huart1, Byte, 0xFFFFU);
   return ch;
 }
 
-static uint32_t ClampReportPeriod(uint32_t Value)
+/* 重新挂起一次 1 字节中断接收，保证串口能一直持续收数据。 */
+static void App_RestartUartReceive(UART_HandleTypeDef *Huart)
 {
-  if (Value < REPORT_PERIOD_MIN_MS)
+  if ((Huart != NULL) && (Huart->Instance == USART1))
   {
-    return REPORT_PERIOD_MIN_MS;
+    (void)HAL_UART_Receive_IT(&huart1, (uint8_t *)&UsbRxByte, 1U);
   }
-  if (Value > REPORT_PERIOD_MAX_MS)
+  else if ((Huart != NULL) && (Huart->Instance == USART2))
   {
-    return REPORT_PERIOD_MAX_MS;
-  }
-  return Value;
-}
-
-static void LED_Set(uint16_t Pin, uint8_t On)
-{
-  HAL_GPIO_WritePin(LED_GPIO_PORT, Pin, On ? LED_ON : LED_OFF);
-}
-
-static const char *MotorStateText(MotorState_t State)
-{
-  if (State == MOTOR_FORWARD)
-  {
-    return "FORWARD";
-  }
-  if (State == MOTOR_REVERSE)
-  {
-    return "REVERSE";
-  }
-  return "STOP";
-}
-
-static void Motor_Set(MotorState_t State, uint8_t Duty)
-{
-  static MotorState_t LastState = MOTOR_STOP;
-  uint32_t Compare;
-
-  if (Duty > PWM_MAX_DUTY)
-  {
-    Duty = PWM_MAX_DUTY;
-  }
-  if ((State != MOTOR_STOP) && (Duty > 0U) && (Duty < MOTOR_MIN_START_DUTY))
-  {
-    Duty = MOTOR_MIN_START_DUTY;
-  }
-
-  if (((LastState == MOTOR_FORWARD) && (State == MOTOR_REVERSE)) ||
-      ((LastState == MOTOR_REVERSE) && (State == MOTOR_FORWARD)))
-  {
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, 0);
-    HAL_Delay(MOTOR_REVERSE_DELAY_MS);
-  }
-
-  Compare = Duty;
-  if (State == MOTOR_FORWARD)
-  {
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, Compare);
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, 0);
-  }
-  else if (State == MOTOR_REVERSE)
-  {
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, Compare);
-  }
-  else
-  {
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, 0);
-  }
-
-  LastState = State;
-}
-
-static void ProcessControl(void)
-{
-  GPIO_PinState RunKey;
-  GPIO_PinState DirKey;
-  uint8_t OutputDuty;
-
-  if (HAL_ADC_PollForConversion(&hadc1, 2) == HAL_OK)
-  {
-    AdcRaw = (uint16_t)HAL_ADC_GetValue(&hadc1);
-  }
-
-  if (AdcFilterReady == 0U)
-  {
-    AdcFiltered = AdcRaw;
-    AdcFilterReady = 1U;
-  }
-  else
-  {
-    AdcFiltered = (uint32_t)((int32_t)AdcFiltered +
-                  (((int32_t)AdcRaw - (int32_t)AdcFiltered) >> ADC_FILTER_SHIFT));
-  }
-
-  PotVoltageMv = (uint16_t)((AdcFiltered * VREF_MV) / ADC_MAX_VALUE);
-  PwmDuty = (uint8_t)((AdcFiltered * PWM_MAX_DUTY) / ADC_MAX_VALUE);
-  OutputDuty = PwmDuty;
-
-  if (ControlMode == CONTROL_FORCE_FORWARD)
-  {
-    MotorState = MOTOR_FORWARD;
-  }
-  else if (ControlMode == CONTROL_FORCE_REVERSE)
-  {
-    MotorState = MOTOR_REVERSE;
-  }
-  else if (ControlMode == CONTROL_FORCE_STOP)
-  {
-    MotorState = MOTOR_STOP;
-  }
-  else if (ControlMode == CONTROL_TEST_FORWARD_100)
-  {
-    MotorState = MOTOR_FORWARD;
-    PwmDuty = PWM_MAX_DUTY;
-    OutputDuty = PWM_MAX_DUTY;
-  }
-  else if (ControlMode == CONTROL_TEST_REVERSE_100)
-  {
-    MotorState = MOTOR_REVERSE;
-    PwmDuty = PWM_MAX_DUTY;
-    OutputDuty = PWM_MAX_DUTY;
-  }
-  else
-  {
-    RunKey = HAL_GPIO_ReadPin(KEY_GPIO_PORT, KEY_RUN_PIN);
-    DirKey = HAL_GPIO_ReadPin(KEY_GPIO_PORT, KEY_DIR_PIN);
-
-    if (RunKey != KEY_PRESSED)
-    {
-      MotorState = MOTOR_STOP;
-    }
-    else if (DirKey == KEY_PRESSED)
-    {
-      MotorState = MOTOR_FORWARD;
-    }
-    else
-    {
-      MotorState = MOTOR_REVERSE;
-    }
-  }
-
-  if (MotorState == MOTOR_STOP)
-  {
-    PwmDuty = 0U;
-    OutputDuty = 0U;
-  }
-  else if (OutputDuty > 0U)
-  {
-    OutputDuty = (uint8_t)(MOTOR_MIN_START_DUTY +
-                 ((((uint32_t)OutputDuty - 1U) * (PWM_MAX_DUTY - MOTOR_MIN_START_DUTY)) /
-                  (PWM_MAX_DUTY - 1U)));
-  }
-
-  Motor_Set(MotorState, OutputDuty);
-}
-
-static void ProcessIndicators(uint32_t NowMs)
-{
-  static uint32_t LastRunBlinkMs;
-  static uint32_t LastAlarmBlinkMs;
-  static uint8_t RunLedOn;
-  static uint8_t AlarmLedOn;
-  uint32_t PeriodMs;
-
-  PeriodMs = ReportPeriodMs;
-  if ((NowMs - LastRunBlinkMs) >= PeriodMs)
-  {
-    LastRunBlinkMs = NowMs;
-    RunLedOn = !RunLedOn;
-    LED_Set(LED_RUN_PIN, RunLedOn);
-  }
-
-  if (PotVoltageMv >= 3000U)
-  {
-    if ((NowMs - LastAlarmBlinkMs) >= ALARM_BLINK_HALF_PERIOD_MS)
-    {
-      LastAlarmBlinkMs = NowMs;
-      AlarmLedOn = !AlarmLedOn;
-      LED_Set(LED_ALARM_PIN, AlarmLedOn);
-    }
-  }
-  else
-  {
-    AlarmLedOn = 0;
-    LED_Set(LED_ALARM_PIN, 0);
-  }
-
-  LED_Set(LED_APP_PIN, AppLedOn);
-}
-
-static void OLED_ShowPadded(uint8_t Line, const char *Text)
-{
-  char Buffer[17];
-  uint8_t i;
-
-  if ((Line == 0U) || (Line > 4U))
-  {
-    return;
-  }
-
-  for (i = 0; i < 16U; i++)
-  {
-    if ((Text != NULL) && (Text[i] != '\0'))
-    {
-      Buffer[i] = Text[i];
-    }
-    else
-    {
-      Buffer[i] = ' ';
-    }
-  }
-  Buffer[16] = '\0';
-
-  if (strcmp(OledLineCache[Line - 1U], Buffer) == 0)
-  {
-    return;
-  }
-
-  memcpy(OledLineCache[Line - 1U], Buffer, sizeof(Buffer));
-  OLED_ShowLine(Line, Buffer);
-}
-
-static void ProcessStatusOutput(uint32_t NowMs)
-{
-  static uint32_t LastReportMs;
-  static uint32_t LastOledUpdateMs;
-  char Text[80];
-  char Line[17];
-  uint32_t PeriodMs;
-
-  PeriodMs = ReportPeriodMs;
-  if ((NowMs - LastOledUpdateMs) >= OLED_UPDATE_PERIOD_MS)
-  {
-    LastOledUpdateMs = NowMs;
-
-    snprintf(Line, sizeof(Line), "%s", MotorStateText(MotorState));
-    OLED_ShowPadded(1, Line);
-    snprintf(Line, sizeof(Line), "V:%lu.%03luV",
-             (unsigned long)(PotVoltageMv / 1000U),
-             (unsigned long)(PotVoltageMv % 1000U));
-    OLED_ShowPadded(2, Line);
-    snprintf(Line, sizeof(Line), "DUTY:%u%%", PwmDuty);
-    OLED_ShowPadded(3, Line);
-    snprintf(Line, sizeof(Line), "T:%lums", (unsigned long)PeriodMs);
-    OLED_ShowPadded(4, Line);
-  }
-
-  if ((NowMs - LastReportMs) >= PeriodMs)
-  {
-    LastReportMs = NowMs;
-    snprintf(Text, sizeof(Text), "STATE:%s,V:%lu.%03lu,DUTY:%u%%,T:%lums\r\n",
-             MotorStateText(MotorState),
-             (unsigned long)(PotVoltageMv / 1000U),
-             (unsigned long)(PotVoltageMv % 1000U),
-             PwmDuty,
-             (unsigned long)PeriodMs);
-    HAL_UART_Transmit(&huart1, (uint8_t *)Text, strlen(Text), 100);
-    HAL_UART_Transmit(&huart2, (uint8_t *)Text, strlen(Text), 100);
+    (void)HAL_UART_Receive_IT(&huart2, (uint8_t *)&BluetoothRxByte, 1U);
   }
 }
 
-static void ProcessCommandAck(void)
+static void App_StartPeripherals(void)
 {
-  char Text[32];
-  uint32_t PeriodMs;
-  uint8_t Kind;
-  uint8_t Target;
-  uint32_t Value;
+  /* 先准备命令解析模块，后面串口一来数据就能直接处理。 */
+  Command_Init();
 
-  if (CommandAckPending == 0U)
-  {
-    return;
-  }
+  /*
+   * 外设引脚和时钟都由 CubeMX 生成代码配置，这里只启动已经配置好的功能。
+   * TIM3_CH3/PB0 和 TIM3_CH4/PB1 仍然是电机正反转 PWM 输出。
+   */
+  (void)HAL_ADCEx_Calibration_Start(&hadc1);
+  (void)HAL_ADC_Start(&hadc1);
+  (void)HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
+  (void)HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
 
-  CommandAckPending = 0U;
-  Target = CommandAckTarget;
-  CommandAckTarget = 0U;
-  Kind = CommandAckKind;
-  Value = CommandAckValue;
-  PeriodMs = ReportPeriodMs;
-
-  if (Kind == 'M')
-  {
-    snprintf(Text, sizeof(Text), "OK,M:%lu\r\n", (unsigned long)Value);
-  }
-  else
-  {
-    snprintf(Text, sizeof(Text), "OK,T:%lums\r\n", (unsigned long)PeriodMs);
-  }
-  if ((Target & ACK_TARGET_USART1) != 0U)
-  {
-    HAL_UART_Transmit(&huart1, (uint8_t *)Text, strlen(Text), 100);
-  }
-  if ((Target & ACK_TARGET_USART2) != 0U)
-  {
-    HAL_UART_Transmit(&huart2, (uint8_t *)Text, strlen(Text), 100);
-  }
-}
-
-static void ParseCommandByte(uint8_t Data, uint8_t AckTarget)
-{
-  if ((Data == 'T') || (Data == 't'))
-  {
-    CommandMode = 'T';
-    CommandValue = 0;
-  }
-  else if ((CommandMode == 'T') && (Data >= '0') && (Data <= '9'))
-  {
-    CommandValue = CommandValue * 10U + (uint32_t)(Data - '0');
-    ReportPeriodMs = ClampReportPeriod(CommandValue);
-    CommandAckTarget |= AckTarget;
-    CommandAckKind = 'T';
-    CommandAckValue = ReportPeriodMs;
-    CommandAckPending = 1U;
-  }
-  else if ((Data == 'L') || (Data == 'l'))
-  {
-    CommandMode = 'L';
-  }
-  else if ((CommandMode == 'L') && ((Data == '0') || (Data == '1')))
-  {
-    AppLedOn = (Data == '1') ? 1U : 0U;
-    CommandMode = 0;
-  }
-  else if ((Data == 'M') || (Data == 'm'))
-  {
-    CommandMode = 'M';
-  }
-  else if ((CommandMode == 'M') && (Data >= '0') && (Data <= '5'))
-  {
-    ControlMode = (ControlMode_t)(Data - '0');
-    CommandAckTarget |= AckTarget;
-    CommandAckKind = 'M';
-    CommandAckValue = (uint32_t)ControlMode;
-    CommandAckPending = 1U;
-    CommandMode = 0;
-  }
-  else if ((Data == '\r') || (Data == '\n') || (Data == ' '))
-  {
-    CommandMode = 0;
-  }
+  /* 再启动应用层模块：电机控制、串口接收和 OLED 界面。 */
+  MotorControl_Init();
+  App_RestartUartReceive(&huart1);
+  App_RestartUartReceive(&huart2);
+  StatusUi_Init();
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
+  if (huart == NULL)
+  {
+    return;
+  }
+
+  /* 两个串口共用这个回调，所以先判断数据来自哪个串口。 */
   if (huart->Instance == USART1)
   {
-    ParseCommandByte(UsbRxByte, ACK_TARGET_USART1);
-    HAL_UART_Receive_IT(&huart1, (uint8_t *)&UsbRxByte, 1);
+    Command_ParseByte(UsbRxByte, COMMAND_ACK_TARGET_USART1);
   }
   else if (huart->Instance == USART2)
   {
-    ParseCommandByte(BluetoothRxByte, ACK_TARGET_USART2);
-    HAL_UART_Receive_IT(&huart2, (uint8_t *)&BluetoothRxByte, 1);
+    Command_ParseByte(BluetoothRxByte, COMMAND_ACK_TARGET_USART2);
   }
+
+  /* 当前 1 字节处理完后，立刻准备接收下一个字节。 */
+  App_RestartUartReceive(huart);
+}
+
+/* 串口异常后也要重新打开接收，否则后续命令可能一直收不到。 */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  /*
+   * 串口偶发溢出、噪声或帧错误后，HAL 可能停止本次中断接收。
+   * 这里重新挂起 1 字节接收，保证后续 T/L/M 命令还能继续进入解析器。
+   */
+  App_RestartUartReceive(huart);
 }
 /* USER CODE END 0 */
 
@@ -530,45 +179,37 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  HAL_ADCEx_Calibration_Start(&hadc1);
-  HAL_ADC_Start(&hadc1);
-  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
-  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
-  HAL_UART_Receive_IT(&huart1, (uint8_t *)&UsbRxByte, 1);
-  HAL_UART_Receive_IT(&huart2, (uint8_t *)&BluetoothRxByte, 1);
-
-  Motor_Set(MOTOR_STOP, 0);
-  LED_Set(LED_RUN_PIN, 0);
-  LED_Set(LED_ALARM_PIN, 0);
-  LED_Set(LED_APP_PIN, 0);
-
-  OLED_Init();
-  OLED_ShowPadded(1, "Motor Control");
-  OLED_ShowPadded(2, "USART1/2 CMD");
-  OLED_ShowPadded(3, "CMD: T1000");
-  OLED_ShowPadded(4, "Ready");
+  /* 启动真正的业务逻辑。前面的 MX_*_Init() 只是把参数配置好。 */
+  App_StartPeripherals();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    /* 上一次执行电机控制任务的时间戳。 */
     static uint32_t LastControlMs;
+    /* 当前电机状态快照，给 OLED 和串口上报使用。 */
+    MotorStatus_t MotorStatus;
+    /* 当前系统运行时间，单位 ms。 */
     uint32_t NowMs;
 
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
     NowMs = HAL_GetTick();
-    if ((NowMs - LastControlMs) >= CONTROL_PERIOD_MS)
+
+    /* 控制任务按固定周期运行，不让主循环速度直接影响控制节奏。 */
+    if ((NowMs - LastControlMs) >= APP_CONTROL_PERIOD_MS)
     {
       LastControlMs = NowMs;
-      ProcessControl();
+      MotorControl_Task(NowMs, Command_GetControlMode());
     }
 
-    ProcessIndicators(NowMs);
-    ProcessCommandAck();
-    ProcessStatusOutput(NowMs);
+    /* 每圈循环都更新状态、处理回包，并刷新 UI。 */
+    MotorControl_GetStatus(&MotorStatus);
+    Command_ProcessAck();
+    StatusUi_Task(NowMs, &MotorStatus, Command_GetReportPeriodMs(), Command_GetAppLedOn());
   }
   /* USER CODE END 3 */
 }
@@ -629,6 +270,7 @@ void SystemClock_Config(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
+  /* 发生严重错误时停在这里，方便连调试器定位问题。 */
   __disable_irq();
   while (1)
   {
