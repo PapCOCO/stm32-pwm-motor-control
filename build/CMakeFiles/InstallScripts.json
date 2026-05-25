@@ -1,8 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/Users/pap/Documents/\u8f6f\u4ef6\u5de5\u4f5c\u533a/Codex/motor-clean/build/cmake_install.cmake",
-		"/Users/pap/Documents/\u8f6f\u4ef6\u5de5\u4f5c\u533a/Codex/motor-clean/build/cmake/stm32cubemx/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

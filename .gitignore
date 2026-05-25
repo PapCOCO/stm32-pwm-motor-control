@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+
+# Build outputs
+build/
+*.elf
+*.hex
+*.bin
+*.map
+
+# CMake / Ninja
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+build.ninja
+.ninja_deps
+.ninja_log
+compile_commands.json
+
+# VS Code local cache
+.vscode/ipch/
