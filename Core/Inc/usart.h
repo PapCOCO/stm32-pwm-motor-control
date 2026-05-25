@@ -32,14 +32,16 @@ extern "C" {
 
 /* USER CODE END Includes */
 
-/* USART1 句柄，用于在其他模块发送串口数据 */
 extern UART_HandleTypeDef huart1;
+
+extern UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */
 
-void MX_USART1_UART_Init(void); /* 初始化 USART1，用于调试串口 */
+void MX_USART1_UART_Init(void);
+void MX_USART2_UART_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 
@@ -50,3 +52,4 @@ void MX_USART1_UART_Init(void); /* 初始化 USART1，用于调试串口 */
 #endif
 
 #endif /* __USART_H__ */
+

@@ -46,10 +46,13 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     Core/Src/app.c
-    Core/Src/button.c
-    Core/Src/motor.c
-    Core/Src/uart_debug.c
+    Core/Src/app_uart.c
+    Core/Src/command.c
+    Core/Src/motor_control.c
+    Core/Src/oled.c
+    Core/Src/status_ui.c
     Middlewares/Third_Party/FreeRTOS-Kernel/list.c
+    Middlewares/Third_Party/FreeRTOS-Kernel/queue.c
     Middlewares/Third_Party/FreeRTOS-Kernel/tasks.c
     Middlewares/Third_Party/FreeRTOS-Kernel/portable/GCC/ARM_CM3/port.c
     Middlewares/Third_Party/FreeRTOS-Kernel/portable/MemMang/heap_4.c

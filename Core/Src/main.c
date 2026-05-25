@@ -3,6 +3,7 @@
 #include "adc.h"
 #include "app.h"
 #include "gpio.h"
+#include "i2c.h"
 #include "tim.h"
 #include "usart.h"
 
@@ -11,7 +12,7 @@
  * 入口文件：
  * - 初始化 HAL 库
  * - 配置系统时钟
- * - 初始化 GPIO、ADC、定时器、USART
+ * - 初始化 GPIO、ADC、I2C、定时器、USART
  * - 调用应用层初始化并启动 FreeRTOS 调度器
  */
 
@@ -27,8 +28,10 @@ int main(void)
   /* 初始化硬件外设 */
   MX_GPIO_Init();
   MX_ADC1_Init();
+  MX_I2C1_Init();
   MX_TIM3_Init();
   MX_USART1_UART_Init();
+  MX_USART2_UART_Init();
 
   /* 初始化应用逻辑 */
   app_init();

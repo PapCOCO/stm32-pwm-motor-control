@@ -2,5 +2,5 @@ Source: https://github.com/FreeRTOS/FreeRTOS-Kernel
 Commit: d3b074a
 
 This directory is vendored as a minimal subset for the STM32F103C6Tx FreeRTOS
-migration: kernel task/list sources, public headers, GCC ARM_CM3 port, and
-heap_4 memory manager.
+migration: kernel task/list/queue sources, public headers, GCC ARM_CM3 port,
+and heap_4 memory manager.

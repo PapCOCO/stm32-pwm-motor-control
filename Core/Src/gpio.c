@@ -32,12 +32,6 @@
 
 /* USER CODE END 1 */
 
-/*
- * GPIO 引脚初始化：
- * - PA6/PA7/PA8 作为推挽输出，用于电机/指示灯控制
- * - PB12/PB13 作为带上拉的输入，用于 RUN/DIRECTION 按键
- */
-
 /** Configure pins as
         * Analog
         * Input
@@ -47,7 +41,6 @@
 */
 void MX_GPIO_Init(void)
 {
-  /* 初始化 GPIO 时钟和引脚模式 */
 
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
